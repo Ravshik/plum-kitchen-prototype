@@ -36,8 +36,8 @@
       icon: item.type === 'Анимация' || item.type === 'Премия' ? 'gift' : 'document',
       title: item.type,
       period: `${item.month}${item.location ? ` · ${item.location}` : ''}`,
-      status: isClosingPeriod() ? 'Начислено' : 'Запланировано',
-      tone: isClosingPeriod() ? 'good' : 'planned',
+      status: 'Начислено',
+      tone: 'good',
       amount: Number(item.amount || 0)
     }));
     const penaltyRows = state.adjustments.filter(item => item.personId === row.p.id && item.type === 'Штраф' && (!item.date || inCurrentPeriod(item.date))).map(item => ({
@@ -65,6 +65,7 @@
       extra = `<div><span>Норма часов</span><b>${Number(personRecord.salaryNormHours || 165).toLocaleString('ru-RU')} ч</b></div><div><span>Переработка</span><b>${money(personRecord.salaryOvertimeRate || 750)}/ч</b></div>`;
     } else if (personRecord.payType === 'Оклад') {
       rate = `${money(personRecord.monthlySalary || personRecord.rate || 0)} в месяц`;
+      extra = `<div><span>Норма часов</span><b>${Number(personRecord.salaryNormHours || 165).toLocaleString('ru-RU')} ч</b></div>`;
     }
     return `<div class="finance-conditions-grid"><div><span>Оформление</span><b>${employment(personRecord)}</b></div><div><span>Тип сотрудника</span><b>${personRecord.type}</b></div><div><span>Тип оплаты</span><b>${payType}</b></div><div><span>Ставка</span><b>${rate}</b></div>${extra}</div>`;
   }
@@ -79,16 +80,17 @@
     const row = personWeek(personRecord);
     const drawer = document.querySelector('#drawer');
     const totalHours = row.shifts.reduce((sum, shift) => sum + (hours(shift) || 0), 0);
-    const planned = isClosingPeriod() ? 0 : Number(row.plannedBonus || 0);
-    const corrections = Number(row.taxi || 0) + Number(row.bonus || 0) - Number(row.penalty || 0);
+    const bonuses = Number(row.bonus || 0);
+    const corrections = Number(row.taxi || 0) - Number(row.penalty || 0);
     const balance = Number(row.balance || 0);
     const hasIssues = row.errorShifts.length > 0;
-    const headerStatus = hasIssues ? 'Требует проверки' : balance > 0 ? 'К выплате' : 'Расчёт закрыт';
+    const salaryPending = row.salaryPayable === false;
+    const headerStatus = hasIssues ? 'Требует проверки' : salaryPending ? 'Оклад накапливается' : balance > 0 ? 'К выплате' : 'Расчёт закрыт';
     const headerTone = hasIssues ? 'bad' : balance > 0 ? 'warn' : 'good';
     const balanceLabel = balance < 0 ? 'Переплата' : balance > 0 ? 'К выплате' : 'Остаток';
     const balanceValue = money(Math.abs(balance));
-    const paymentDisabled = hasIssues || balance <= 0;
-    const paymentHint = hasIssues ? 'Сначала исправьте ошибки в сменах' : balance < 0 ? 'Новая выплата недоступна: есть переплата' : 'Расчёт уже закрыт';
+    const paymentDisabled = hasIssues || salaryPending || balance <= 0;
+    const paymentHint = hasIssues ? 'Сначала исправьте ошибки в сменах' : salaryPending ? 'Оклад накапливается и будет доступен к выплате в конце месяца' : balance < 0 ? 'Новая выплата недоступна: есть переплата' : 'Расчёт уже закрыт';
     const history = state.audit.filter(item => item.text.includes(personRecord.name));
     const latest = history[0];
     const rows = amountRows(row);
@@ -108,7 +110,7 @@
 
       <section class="finance-summary" aria-label="Финансовое резюме">
         <article>${icon('wallet')}<span>Начислено</span><b>${money(row.total)}</b></article>
-        <article>${icon('calendar')}<span>Запланировано</span><b>${money(planned)}</b></article>
+        <article>${icon('calendar')}<span>Премии и анимации</span><b>${money(bonuses)}</b></article>
         <article>${icon('coins')}<span>Выплачено</span><b>${money(row.paid)}</b></article>
         <article>${icon('document')}<span>Корректировки</span><b class="${corrections < 0 ? 'negative' : corrections > 0 ? 'positive' : ''}">${signedMoney(corrections)}</b></article>
         <article class="finance-balance ${balance < 0 ? 'overpaid' : balance > 0 ? 'due' : 'closed'}">${icon(balance < 0 ? 'alert' : 'wallet')}<span>${balanceLabel}</span><b>${balanceValue}</b></article>
@@ -134,13 +136,13 @@
 
         <section class="finance-tab-panel hidden" data-person-card-panel="shifts">
           <div class="finance-section-head"><div><h3>Смены</h3><p>${row.shifts.length} ${shiftWord(row.shifts.length)} за период · нажмите на строку для подробностей</p></div></div>
-          <div class="finance-shift-list">${row.shifts.length ? row.shifts.slice().sort((a, b) => b.date.localeCompare(a.date, 'ru')).map(shift => `<button data-person-shift-open="${shift.id}"><span><b>${shift.date}</b><small>${shift.location} · ${shift.position}</small></span><span><b>${shift.workStart ? `${shift.workStart}–${shift.workEnd}` : `${shift.entry}–${shift.exit || '…'}`}</b><small>${hours(shift) == null ? 'Время не рассчитано' : `${hours(shift).toLocaleString('ru-RU')} ч`}</small></span><span><b>${money(accrued(shift))}</b>${status(shift.status, tone(shift))}</span><i>›</i></button>`).join('') : '<div class="finance-empty">Смен за выбранный период нет</div>'}</div>
+          <div class="finance-shift-list">${row.shifts.length ? row.shifts.slice().sort((a, b) => b.date.localeCompare(a.date, 'ru')).map(shift => `<button data-person-shift-open="${shift.id}"><span><b>${shift.date}</b><small>${shift.location} · ${shift.position}</small></span><span><b>${window.shiftTimeRangeText ? window.shiftTimeRangeText(shift) : shift.workStart ? `${shift.workStart}–${shift.workEnd}` : `${shift.entry}–${shift.exit || '…'}`}</b><small>${hours(shift) == null ? 'Время не рассчитано' : `${hours(shift).toLocaleString('ru-RU')} ч`}</small></span><span><b>${money(accrued(shift))}</b>${status(shift.status, tone(shift))}</span><i>›</i></button>`).join('') : '<div class="finance-empty">Смен за выбранный период нет</div>'}</div>
         </section>
 
         <section class="finance-tab-panel hidden" data-person-card-panel="conditions">
           <div class="finance-section-head"><div><h3>Условия оплаты</h3><p>Действующие условия сотрудника</p></div><button class="btn" data-action="edit-rate" data-id="${id}">Изменить условия</button></div>
           ${conditionsMarkup(personRecord)}
-          <div class="finance-note">Изменение условий применяется с указанной даты. Уже закрытые смены сохраняют прежние значения.</div>
+          <div class="finance-note">Условия применяются к сменам выбранной должности внутри заданного периода. Смены до начала периода не меняются.</div>
         </section>
 
         <section class="finance-tab-panel hidden" data-person-card-panel="history">

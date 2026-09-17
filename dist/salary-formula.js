@@ -3,9 +3,222 @@
   const FORMULA_PAY_TYPE = 'Индивидуальная окладная формула';
   const SALARY_PAY_TYPE = 'Оклад';
 
+  function dateKey(value) {
+    const text = String(value || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(text)) return ruToIso(text);
+    return '';
+  }
+
+  function shiftDateKey(shift) {
+    return dateKey(shift?.date);
+  }
+
+  function previousDate(value) {
+    const parsed = new Date(`${value}T12:00:00`);
+    parsed.setDate(parsed.getDate() - 1);
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+  }
+
+  function assignmentContains(assignment, date) {
+    return assignment.from <= date && (!assignment.to || date <= assignment.to);
+  }
+
+  function rateAssignmentFor(personRecord, position, dateValue) {
+    const date = dateKey(dateValue);
+    if (!date) return null;
+    return (personRecord.rateAssignments || [])
+      .filter(item => item.position === position && assignmentContains(item, date))
+      .sort((a, b) => b.from.localeCompare(a.from))[0] || null;
+  }
+
+  function hasRateSchedule(personRecord, position) {
+    return (personRecord.rateAssignments || []).some(item => item.position === position);
+  }
+
+  function assignmentRate(assignment) {
+    if (!assignment) return null;
+    if (assignment.payType === 'Почасовая') return Number(assignment.rate) || null;
+    if (assignment.payType === SALARY_PAY_TYPE) return Number(assignment.monthlySalary) || null;
+    if (assignment.payType === FORMULA_PAY_TYPE) return Number(assignment.salaryOvertimeRate) || null;
+    return Number(assignment.rate) || null;
+  }
+
+  const rateOfBeforeAssignments = rateOf;
+  rateOf = function (shift) {
+    if (Number(shift?.rate) > 0) return Number(shift.rate);
+    const personRecord = person(shift.personId);
+    const assignment = rateAssignmentFor(personRecord, shift.position, shiftDateKey(shift));
+    if (assignment) return assignmentRate(assignment);
+    if (hasRateSchedule(personRecord, shift.position)) return null;
+    return rateOfBeforeAssignments(shift);
+  };
+
+  const rateForNewShiftBeforeAssignments = rateForNewShift;
+  rateForNewShift = function (personRecord, position, location) {
+    const assignment = rateAssignmentFor(personRecord, position, today());
+    if (assignment) {
+      const rate = assignmentRate(assignment);
+      return {
+        rate,
+        rateReview: assignment.payType === 'Почасовая' ? !(rate > 0) : false
+      };
+    }
+    if (hasRateSchedule(personRecord, position)) {
+      return { rate: baseRate(position, location), rateReview: true };
+    }
+    return rateForNewShiftBeforeAssignments(personRecord, position, location);
+  };
+
+  function snapshotExistingShiftRates(personRecord) {
+    state.shifts
+      .filter(shift => shift.personId === personRecord.id && shift.type !== 'Вызывной' && !(Number(shift.rate) > 0))
+      .forEach(shift => {
+        const savedRate = rateOf(shift);
+        if (savedRate > 0) shift.rate = Number(savedRate);
+      });
+  }
+
+  function currentAssignmentText(personRecord) {
+    const assignments = (personRecord.rateAssignments || [])
+      .filter(item => item.position === personRecord.position)
+      .sort((a, b) => b.from.localeCompare(a.from));
+    if (!assignments.length) return 'Периоды ставок ещё не заданы. Первая запись сохранит текущие смены со старой ставкой.';
+    const latest = assignments[0];
+    return `Последнее назначение: ${isoToRu(latest.from)}–${latest.to ? isoToRu(latest.to) : 'бессрочно'}, ${money(assignmentRate(latest))}${latest.payType === 'Почасовая' ? '/ч' : ''}.`;
+  }
+
+  function buildRateAssignment(personRecord, data) {
+    const from = dateKey(data.from);
+    const indefinite = !!data.indefinite;
+    const to = indefinite ? null : dateKey(data.to);
+    if (!from) {
+      toast('Укажите дату начала действия ставки');
+      return null;
+    }
+    if (!indefinite && !to) {
+      toast('Укажите дату окончания или выберите «Бессрочно»');
+      return null;
+    }
+    if (to && to < from) {
+      toast('Дата окончания не может быть раньше даты начала');
+      return null;
+    }
+
+    const position = personRecord.position;
+    const existing = (personRecord.rateAssignments || []).map(item => ({ ...item }));
+    const futureOverlap = existing.find(item => {
+      if (item.position !== position || item.from === from) return false;
+      const endsAfterStart = !item.to || item.to >= from;
+      const newEndsAfterExistingStart = !to || to >= item.from;
+      return item.from > from && endsAfterStart && newEndsAfterExistingStart;
+    });
+    if (futureOverlap) {
+      toast(`Период пересекается с назначением от ${isoToRu(futureOverlap.from)}`);
+      return null;
+    }
+
+    snapshotExistingShiftRates(personRecord);
+    const samePosition = existing.filter(item => item.position === position);
+    if (!samePosition.length && Number(personRecord.rate) > 0) {
+      const historicalDates = state.shifts
+        .filter(shift => shift.personId === personRecord.id && shift.position === position)
+        .map(shiftDateKey)
+        .filter(Boolean)
+        .sort();
+      const legacyFrom = historicalDates[0] || dateKey(today());
+      if (legacyFrom < from) {
+        existing.push({
+          id: nextId(),
+          position,
+          engagement: employment(personRecord),
+          payType: personRecord.payType || 'Почасовая',
+          rate: Number(personRecord.rate),
+          monthlySalary: Number(personRecord.monthlySalary || 0),
+          salaryBase: Number(personRecord.salaryBase || 0),
+          salaryNormHours: Number(personRecord.salaryNormHours || 0),
+          salaryOvertimeRate: Number(personRecord.salaryOvertimeRate || 0),
+          from: legacyFrom,
+          to: previousDate(from),
+          migrated: true
+        });
+      }
+    }
+
+    const updated = existing
+      .filter(item => !(item.position === position && item.from === from))
+      .map(item => {
+        if (item.position === position && item.from < from && (!item.to || item.to >= from)) {
+          return { ...item, to: previousDate(from) };
+        }
+        return item;
+      });
+
+    const assignment = {
+      id: nextId(),
+      position,
+      engagement: data.engagement,
+      payType: data.payType,
+      rate: Number(data.rate || 0),
+      monthlySalary: Number(data.monthlySalary || 0),
+      salaryBase: Number(data.salaryBase || 0),
+      salaryNormHours: Number(data.payType === SALARY_PAY_TYPE ? data.monthlyNormHours : data.salaryNormHours || 0),
+      salaryOvertimeRate: Number(data.salaryOvertimeRate || 0),
+      from,
+      to,
+      indefinite,
+      createdAt: new Date().toLocaleString('ru-RU'),
+      createdBy: 'Бухгалтер'
+    };
+    personRecord.rateAssignments = [...updated, assignment].sort((a, b) => a.from.localeCompare(b.from));
+    return assignment;
+  }
+
+  function applyAssignmentToShifts(personRecord, assignment) {
+    state.shifts
+      .filter(shift => {
+        const date = shiftDateKey(shift);
+        return shift.personId === personRecord.id &&
+          shift.type !== 'Вызывной' &&
+          shift.position === assignment.position &&
+          date && assignmentContains(assignment, date);
+      })
+      .forEach(shift => {
+        if (assignment.payType === 'Почасовая') shift.rate = Number(assignment.rate);
+        shift.engagement = assignment.engagement;
+        shift.rateReview = false;
+        if (shift.exit) reconcileShift(shift);
+      });
+  }
+
   function isSalaryEmployee(personRecord) {
     return employment(personRecord) === 'ТК' && [FORMULA_PAY_TYPE, SALARY_PAY_TYPE].includes(personRecord.payType);
   }
+
+  function salaryShiftAmount(shift, personRecord = person(shift.personId)) {
+    if (!isSalaryEmployee(personRecord) || shift.type === 'Вызывной') return null;
+    const shiftKey = shiftDateKey(shift).slice(0, 7);
+    const ordered = state.shifts
+      .filter(item => item.personId === personRecord.id && item.type !== 'Вызывной' && shiftDateKey(item).startsWith(shiftKey) && hours(item) != null)
+      .slice()
+      .sort((a, b) => shiftDateKey(a).localeCompare(shiftDateKey(b)) || a.id - b.id);
+    const index = ordered.findIndex(item => item.id === shift.id);
+    if (index < 0) return 0;
+    const norm = Number(personRecord.salaryNormHours || 165);
+    const base = Number(personRecord.payType === FORMULA_PAY_TYPE ? personRecord.salaryBase || personRecord.monthlySalary || personRecord.rate || 0 : personRecord.monthlySalary || personRecord.rate || 0);
+    const overtimeRate = personRecord.payType === FORMULA_PAY_TYPE ? Number(personRecord.salaryOvertimeRate || 750) : 0;
+    const before = ordered.slice(0, index).reduce((sum, item) => sum + (hours(item) || 0), 0);
+    const worked = hours(shift) || 0;
+    const regularHours = Math.min(worked, Math.max(0, norm - before));
+    const overtimeHours = Math.max(0, worked - regularHours);
+    return (norm > 0 ? base / norm * regularHours : 0) + overtimeHours * overtimeRate;
+  }
+
+  const accruedBeforeSalaryFormula = accrued;
+  accrued = function (shift) {
+    const calculated = salaryShiftAmount(shift);
+    return calculated == null ? accruedBeforeSalaryFormula(shift) : calculated;
+  };
 
   function monthShifts(personId, locationFilter) {
     const monthKey = String(currentPeriodTo || currentPeriodFrom).slice(0, 7);
@@ -24,20 +237,20 @@
     const salaryShifts = monthShifts(personRecord.id, locationFilter);
     const salaryErrors = salaryShifts.filter(hasError);
     const monthHours = salaryShifts.reduce((sum, shift) => sum + (hours(shift) || 0), 0);
-    const salaryBase = Number(personRecord.salaryBase || personRecord.monthlySalary || personRecord.rate || 0);
+    const salaryBase = Number(personRecord.payType === FORMULA_PAY_TYPE ? personRecord.salaryBase || personRecord.monthlySalary || personRecord.rate || 0 : personRecord.monthlySalary || personRecord.rate || 0);
     const normHours = Number(personRecord.salaryNormHours || 165);
     const overtimeRate = Number(personRecord.salaryOvertimeRate || 750);
     const overtimeHours = Math.max(0, monthHours - normHours);
-    const included = isClosingPeriod();
-    const base = included
-      ? salaryBase + (personRecord.payType === FORMULA_PAY_TYPE ? overtimeHours * overtimeRate : 0)
-      : 0;
+    const proportionalHours = Math.min(monthHours, normHours);
+    const proportionalBase = normHours > 0 ? salaryBase / normHours * proportionalHours : 0;
+    const base = Math.round(proportionalBase + (personRecord.payType === FORMULA_PAY_TYPE ? overtimeHours * overtimeRate : 0));
+    const payable = isClosingPeriod();
     const total = base + row.taxi + row.bonus - row.penalty;
 
     return {
       ...row,
-      ok: included ? salaryShifts.length > 0 && salaryErrors.length === 0 : row.ok,
-      errorShifts: included ? salaryErrors : row.errorShifts,
+      ok: salaryShifts.length > 0 && salaryErrors.length === 0,
+      errorShifts: salaryErrors,
       base,
       total,
       balance: total - row.paid,
@@ -46,7 +259,11 @@
       salaryOvertimeRate: overtimeRate,
       salaryMonthHours: monthHours,
       salaryOvertimeHours: overtimeHours,
-      salaryIncluded: included
+      salaryHourlyValue: normHours > 0 ? salaryBase / normHours : 0,
+      salaryUnderNorm: monthHours < normHours,
+      salaryMissingHours: Math.max(0, normHours - monthHours),
+      salaryIncluded: true,
+      salaryPayable: payable
     };
   };
 
@@ -57,11 +274,15 @@
       const base = Number(personRecord.salaryBase || 123000);
       const norm = Number(personRecord.salaryNormHours || 165);
       const overtime = Number(personRecord.salaryOvertimeRate || 750);
-      return `<b>${money(base)}</b><div class="subline salary-rate-note">до ${norm} ч · сверх +${money(overtime)}/ч</div>`;
+      const hourly = norm > 0 ? base / norm : 0;
+      return `<b>${money(base)}</b><div class="subline salary-rate-note">${money(hourly)}/ч до ${norm} ч · сверх +${money(overtime)}/ч</div>`;
     }
 
     if (personRecord.payType === SALARY_PAY_TYPE) {
-      return `<b>${money(Number(personRecord.monthlySalary || personRecord.rate || 0))}</b><div class="subline salary-rate-note">оклад за месяц</div>`;
+      const base = Number(personRecord.monthlySalary || personRecord.rate || 0);
+      const norm = Number(personRecord.salaryNormHours || 165);
+      const hourly = norm > 0 ? base / norm : 0;
+      return `<b>${money(base)}</b><div class="subline salary-rate-note">${money(hourly)}/ч · норма ${norm} ч</div>`;
     }
 
     return null;
@@ -69,8 +290,22 @@
 
   const rowStatusBeforeSalaryFormula = rowStatus;
   rowStatus = function (row) {
-    if (isSalaryEmployee(row.p) && !isClosingPeriod()) return status('Оклад в конце месяца', 'warn');
+    if (isSalaryEmployee(row.p) && row.salaryUnderNorm) return status(`Начислено ${row.salaryMonthHours.toLocaleString('ru-RU')} из ${row.salaryNormHours} ч`, 'warn');
+    if (isSalaryEmployee(row.p) && !row.salaryPayable) return status('Накоплено · выплата в конце месяца', 'warn');
     return rowStatusBeforeSalaryFormula(row);
+  };
+
+  const openRegistersBeforeSalaryFormula = openRegistersModal;
+  openRegistersModal = function () {
+    const weekRowsBeforeRegistry = weekRows;
+    weekRows = function () {
+      return weekRowsBeforeRegistry().map(row => row.salaryPayable === false ? { ...row, ok: false } : row);
+    };
+    try {
+      return openRegistersBeforeSalaryFormula();
+    } finally {
+      weekRows = weekRowsBeforeRegistry;
+    }
   };
 
   function salaryField(label, name, value, note = '') {
@@ -106,6 +341,13 @@
     const normHours = Number(personRecord.salaryNormHours || 165);
     const overtimeRate = Number(personRecord.salaryOvertimeRate || 750);
     const monthlySalary = Number(personRecord.monthlySalary || personRecord.rate || 0);
+    const validityBlock = `<section class="rate-validity" data-rate-validity>
+        <div class="rate-validity-head"><b>Период действия ставки</b><span>Для должности «${personRecord.position}»</span></div>
+        ${field('Действует с', 'from', today())}
+        ${field('Действует до', 'to', '')}
+        <label class="check-field rate-indefinite"><input data-field="indefinite" type="checkbox" checked><span><b>Бессрочно</b><small>Ставка действует, пока не появится новое назначение</small></span></label>
+        <div class="rate-validity-note">${currentAssignmentText(personRecord)}<br>Смены до начала периода сохранят прежнюю ставку.</div>
+      </section>`;
 
     openModal(
       'Оформление и ставка',
@@ -114,8 +356,12 @@
       selectField('Тип оплаты', 'payType', options(['Почасовая', SALARY_PAY_TYPE, FORMULA_PAY_TYPE], currentPayType)) +
       `<label class="field ${currentPayType === 'Почасовая' ? '' : 'hidden'}" data-hourly-rate>Ставка за час<div class="salary-input"><input data-field="rate" type="number" min="0" step="1" value="${personRecord.rate || ''}"><span>₽/ч</span></div></label>` +
       `<section class="salary-config full ${currentPayType === SALARY_PAY_TYPE ? '' : 'hidden'}" data-regular-salary>
-        <div class="salary-config-head"><b>Ежемесячный оклад</b><span>Начисляется в последнюю неделю месяца</span></div>
-        <div class="salary-config-grid">${salaryField('Оклад за месяц', 'monthlySalary', monthlySalary || 123000, '₽')}</div>
+        <div class="salary-config-head"><b>Ежемесячный оклад</b><span>Растёт по закрытым сменам, выплачивается в конце месяца</span></div>
+        <div class="salary-config-grid">
+          ${salaryField('Оклад за месяц', 'monthlySalary', monthlySalary || 123000, '₽')}
+          ${salaryField('Норма часов', 'monthlyNormHours', normHours, 'ч')}
+        </div>
+        <div class="salary-formula-preview">До нормы: оклад ÷ <b data-regular-norm>${normHours}</b> × отработанные часы. Сверх нормы доплата не начисляется.</div>
       </section>` +
       `<section class="salary-config full ${currentPayType === FORMULA_PAY_TYPE ? '' : 'hidden'}" data-salary-formula>
         <div class="salary-config-head"><b>Индивидуальная окладная формула</b><span>Значения можно менять для каждого сотрудника</span></div>
@@ -124,11 +370,11 @@
           ${salaryField('Норма часов', 'salaryNormHours', normHours, 'ч')}
           ${salaryField('Переработка', 'salaryOvertimeRate', overtimeRate, '₽/ч')}
         </div>
-        <div class="salary-formula-preview">Если часы ≤ <b data-formula-norm>${normHours}</b>, начислить <b data-formula-base>${money(salaryBase)}</b>; если больше — оклад + переработка × <b data-formula-overtime>${money(overtimeRate)}</b>.</div>
-        <div class="salary-period-note">Часы берутся за весь календарный месяц. Начисление появляется один раз — в периоде, включающем последнюю неделю месяца.</div>
+        <div class="salary-formula-preview">До <b data-formula-norm>${normHours}</b> ч: <b data-formula-base>${money(salaryBase)}</b> ÷ <b data-formula-norm>${normHours}</b> × фактические часы. Сверх нормы: полный оклад + переработка × <b data-formula-overtime>${money(overtimeRate)}</b>.</div>
+        <div class="salary-period-note">Начисление растёт после каждой закрытой смены. Выплата оклада доступна в периоде, включающем последнюю неделю месяца.</div>
       </section>` +
       (chefRate ? '<div class="field full rate-hint">Для наличного вызывного ставку устанавливает шеф отдельно в каждой закрытой смене.</div>' : '') +
-      field('Действует с', 'from', today()),
+      validityBlock,
       'Сохранить условия',
       data => {
         const selectedType = data.payType;
@@ -140,8 +386,8 @@
           toast('Введите ставку за час');
           return false;
         }
-        if (selectedType === SALARY_PAY_TYPE && !(Number(data.monthlySalary) > 0)) {
-          toast('Введите оклад за месяц');
+        if (selectedType === SALARY_PAY_TYPE && (!(Number(data.monthlySalary) > 0) || !(Number(data.monthlyNormHours) > 0))) {
+          toast('Введите оклад за месяц и норму часов');
           return false;
         }
         if (selectedType === FORMULA_PAY_TYPE && (!(Number(data.salaryBase) > 0) || !(Number(data.salaryNormHours) > 0) || !(Number(data.salaryOvertimeRate) > 0))) {
@@ -149,42 +395,42 @@
           return false;
         }
 
-        personRecord.engagement = data.engagement;
-        personRecord.payType = selectedType;
-        if (selectedType === 'Почасовая' && !chefRate) personRecord.rate = Number(data.rate);
-        if (selectedType === SALARY_PAY_TYPE) {
-          personRecord.monthlySalary = Number(data.monthlySalary);
-          personRecord.rate = Number(data.monthlySalary);
-        }
-        if (selectedType === FORMULA_PAY_TYPE) {
-          personRecord.salaryBase = Number(data.salaryBase);
-          personRecord.salaryNormHours = Number(data.salaryNormHours);
-          personRecord.salaryOvertimeRate = Number(data.salaryOvertimeRate);
-          personRecord.rate = Number(data.salaryOvertimeRate);
+        const assignment = buildRateAssignment(personRecord, data);
+        if (!assignment) return false;
+
+        const todayKey = dateKey(today());
+        if (assignmentContains(assignment, todayKey)) {
+          personRecord.engagement = data.engagement;
+          personRecord.payType = selectedType;
+          if (selectedType === 'Почасовая' && !chefRate) personRecord.rate = Number(data.rate);
+          if (selectedType === SALARY_PAY_TYPE) {
+            personRecord.monthlySalary = Number(data.monthlySalary);
+            personRecord.salaryNormHours = Number(data.monthlyNormHours);
+            personRecord.rate = Number(data.monthlySalary);
+          }
+          if (selectedType === FORMULA_PAY_TYPE) {
+            personRecord.salaryBase = Number(data.salaryBase);
+            personRecord.salaryNormHours = Number(data.salaryNormHours);
+            personRecord.salaryOvertimeRate = Number(data.salaryOvertimeRate);
+            personRecord.rate = Number(data.salaryOvertimeRate);
+          }
+          personRecord.rateConfirmed = true;
+          personRecord.ratePosition = personRecord.position;
+          personRecord.rateConfirmedAt = new Date().toLocaleString('ru-RU');
+          personRecord.rateConfirmedBy = 'Бухгалтер';
         }
 
-        personRecord.rateConfirmed = true;
-        personRecord.ratePosition = personRecord.position;
-        personRecord.rateConfirmedAt = new Date().toLocaleString('ru-RU');
-        personRecord.rateConfirmedBy = 'Бухгалтер';
-        state.shifts
-          .filter(shift => shift.personId === personRecord.id && shift.type !== 'Вызывной' && shift.rateReview && shift.position === personRecord.position)
-          .forEach(shift => {
-            if (selectedType === 'Почасовая') shift.rate = Number(personRecord.rate);
-            shift.rateReview = false;
-            if (shift.exit && ['Требует проверки', 'Требует проверки ставки'].includes(shift.status)) shift.status = 'Готово';
-          });
-
-        state.shifts.filter(shift => shift.personId === personRecord.id && shift.exit).forEach(reconcileShift);
+        applyAssignmentToShifts(personRecord, assignment);
         const conditions = selectedType === FORMULA_PAY_TYPE
-          ? `${money(personRecord.salaryBase)} до ${personRecord.salaryNormHours} ч, переработка ${money(personRecord.salaryOvertimeRate)}/ч`
+          ? `${money(assignment.salaryBase)} до ${assignment.salaryNormHours} ч, переработка ${money(assignment.salaryOvertimeRate)}/ч`
           : selectedType === SALARY_PAY_TYPE
-            ? `${money(personRecord.monthlySalary)} в месяц`
-            : `${money(personRecord.rate)}/ч`;
+            ? `${money(assignment.monthlySalary)} в месяц, норма ${assignment.salaryNormHours} ч`
+            : `${money(assignment.rate)}/ч`;
+        const validity = `${isoToRu(assignment.from)}–${assignment.to ? isoToRu(assignment.to) : 'бессрочно'}`;
         state.audit.unshift({
           at: new Date().toLocaleString('ru-RU'),
           actor: 'Бухгалтер',
-          text: `Оформление изменено на ${data.engagement} · ${selectedType} · ${conditions} для ${personRecord.name}`
+          text: `Для ${personRecord.name} назначены условия: ${personRecord.position} · ${data.engagement} · ${selectedType} · ${conditions} · период ${validity}`
         });
       }
     );
@@ -194,7 +440,6 @@
     modal.querySelector('[data-field="display"]')?.closest('.field')?.classList.add('salary-employee-field');
     modal.querySelector('[data-field="engagement"]')?.closest('.field')?.classList.add('salary-engagement-field');
     modal.querySelector('[data-field="payType"]')?.closest('.field')?.classList.add('salary-paytype-field');
-    modal.querySelector('[data-field="from"]')?.closest('.field')?.classList.add('salary-from-field');
     const modalActions = modal.querySelector('.modal-actions');
     modalActions?.insertAdjacentHTML('afterbegin', '<button class="salary-reset-btn" type="button" data-reset-salary>↻&nbsp;&nbsp;Сбросить</button>');
     const engagementSelect = modal.querySelector('[data-field="engagement"]');
@@ -202,17 +447,33 @@
     const updatePreview = () => {
       const base = Number(modal.querySelector('[data-field="salaryBase"]')?.value || 0);
       const norm = Number(modal.querySelector('[data-field="salaryNormHours"]')?.value || 0);
+      const regularNorm = Number(modal.querySelector('[data-field="monthlyNormHours"]')?.value || 0);
       const overtime = Number(modal.querySelector('[data-field="salaryOvertimeRate"]')?.value || 0);
       const baseNode = modal.querySelector('[data-formula-base]');
-      const normNode = modal.querySelector('[data-formula-norm]');
+      const normNodes = modal.querySelectorAll('[data-formula-norm]');
+      const regularNormNode = modal.querySelector('[data-regular-norm]');
       const overtimeNode = modal.querySelector('[data-formula-overtime]');
       if (baseNode) baseNode.textContent = money(base);
-      if (normNode) normNode.textContent = norm.toLocaleString('ru-RU');
+      normNodes.forEach(node => node.textContent = norm.toLocaleString('ru-RU'));
+      if (regularNormNode) regularNormNode.textContent = regularNorm.toLocaleString('ru-RU');
       if (overtimeNode) overtimeNode.textContent = money(overtime);
     };
     engagementSelect.onchange = () => updateSalaryFields(modal);
     payTypeSelect.onchange = () => updateSalaryFields(modal);
-    modal.querySelectorAll('[data-salary-formula] input').forEach(input => input.oninput = updatePreview);
+    const indefiniteInput = modal.querySelector('[data-field="indefinite"]');
+    const toInput = modal.querySelector('[data-field="to"]');
+    const toField = toInput?.closest('.field');
+    const updateValidity = () => {
+      const indefinite = !!indefiniteInput?.checked;
+      if (toInput) {
+        toInput.disabled = indefinite;
+        if (indefinite) toInput.value = '';
+      }
+      toField?.classList.toggle('disabled', indefinite);
+      toField?.querySelector('[data-date-picker]')?.toggleAttribute('disabled', indefinite);
+    };
+    if (indefiniteInput) indefiniteInput.onchange = updateValidity;
+    modal.querySelectorAll('[data-salary-formula] input,[data-regular-salary] input').forEach(input => input.oninput = updatePreview);
     modal.querySelector('[data-reset-salary]').onclick = () => {
       const defaults = { salaryBase: 123000, salaryNormHours: 165, salaryOvertimeRate: 750 };
       Object.entries(defaults).forEach(([name, value]) => {
@@ -222,6 +483,7 @@
       updatePreview();
     };
     updateSalaryFields(modal);
+    updateValidity();
   }
 
   const openModalBeforeSalaryLayout = openModal;

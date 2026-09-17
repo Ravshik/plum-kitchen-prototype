@@ -8,17 +8,33 @@
     return day >= lastDay - 6;
   };
 
+  const basePersonWeek = personWeek;
+  personWeek = function (...args) {
+    const row = basePersonWeek(...args);
+    row.bonus = Number(row.plannedBonus || 0);
+    row.total = Number(row.base || 0) + Number(row.taxi || 0) + row.bonus - Number(row.penalty || 0);
+    row.balance = row.total - Number(row.paid || 0);
+    return row;
+  };
+
+  const baseWeekFilters = weekFilters;
+  weekFilters = function () {
+    return baseWeekFilters()
+      .replace('Премии и анимации видны в ведомости как запланированные и будут начислены в последнюю неделю месяца.', 'Премии и анимации сразу включаются в итог выбранного периода.')
+      .replace('Премии и анимации этого месяца включены в начисление выбранного периода.', 'Премии и анимации сразу включаются в итог выбранного периода.');
+  };
+
   function workDatesCell(shifts) {
-    const dates = [...new Set((shifts || []).map(shift => shift.date).filter(Boolean))]
-      .sort((a, b) => ruToIso(a).localeCompare(ruToIso(b)));
+    const ordered = (shifts || []).slice().sort((a, b) => ruToIso(a.date).localeCompare(ruToIso(b.date)) || a.id - b.id);
+    if (!ordered.length) return '<span class="dash">—</span>';
 
-    if (!dates.length) return '<span class="dash">—</span>';
-
-    const shiftCount = (shifts || []).length;
-
-    return `<div class="work-date-list">${dates
-      .map(date => `<span>${date}</span>`)
-      .join('')}</div><div class="subline">${shiftCount} ${shiftCount === 1 ? 'смена' : shiftCount < 5 ? 'смены' : 'смен'}</div>`;
+    return `<div class="work-shift-list">${ordered.map(shift => {
+      const worked = hours(shift);
+      const time = window.shiftTimeRangeText
+        ? window.shiftTimeRangeText(shift)
+        : shift.workStart && shift.workEnd ? `${shift.workStart}–${shift.workEnd}` : `${shift.entry}–${shift.exit || '…'}`;
+      return `<button type="button" class="work-shift-item" data-shift="${shift.id}" title="Открыть смену"><b>${shift.date}</b><small>${time}${worked == null ? '' : ` · ${worked.toLocaleString('ru-RU')} ч`}</small></button>`;
+    }).join('')}</div>`;
   }
 
   statementTable = function (rows) {
@@ -58,15 +74,15 @@
           <th>К выплате</th>
           <th>Статус</th>
         </tr></thead>
-        <tbody>${rows.map(row => `<tr data-ledger-row data-person-name="${row.p.name.toLowerCase()}">
-          <td><input type="checkbox" data-pay-person="${row.p.id}" ${row.balance <= 0 ? 'disabled' : ''}></td>
+        <tbody>${rows.map(row => `<tr class="${row.salaryUnderNorm ? 'salary-under-norm' : ''}" data-ledger-row data-person-name="${row.p.name.toLowerCase()}">
+          <td><input type="checkbox" data-pay-person="${row.p.id}" ${row.balance <= 0 || row.salaryPayable === false ? 'disabled' : ''}></td>
           <td><b>${row.p.position}</b><div class="subline">${employment(row.p)} · ${row.p.type}</div></td>
           <td><button class="person-link" data-person="${row.p.id}">${row.p.name}</button>${row.p.source === 'accounting' ? '<div class="subline">Без табеля охраны</div>' : ''}</td>
           <td class="work-dates-cell">${workDatesCell(row.shifts)}</td>
           <td>${typeof salaryRateLabel === 'function' && salaryRateLabel(row.p) ? salaryRateLabel(row.p) : row.p.payType === 'Оклад' ? 'Оклад' : row.p.payType === 'Фиксированная сумма за неделю' ? 'За неделю' : row.p.type === 'Вызывной' && employment(row.p) === 'Наличные' ? 'По сменам' : money(row.p.rate)}</td>
-          <td><b>${money(row.base)}</b></td>
+          <td><b>${money(row.base)}</b>${row.salaryUnderNorm ? `<div class="salary-progress"><span style="--salary-progress:${Math.min(100, row.salaryMonthHours / row.salaryNormHours * 100)}%"></span></div><div class="subline">${row.salaryMonthHours.toLocaleString('ru-RU')} из ${row.salaryNormHours} ч · не хватает ${row.salaryMissingHours.toLocaleString('ru-RU')} ч</div>` : ''}</td>
           <td><label class="inline-money"><input type="number" min="0" step="100" value="${row.taxi || ''}" placeholder="0" data-taxi-person="${row.p.id}"><span>₽</span></label></td>
-          <td><button class="amount-detail ${row.plannedBonus ? 'positive' : ''}" data-person="${row.p.id}">${row.plannedBonus ? `+${money(isClosingPeriod() ? row.bonus : row.plannedBonus)}` : '—'}</button>${row.plannedBonus && !isClosingPeriod() ? '<div class="subline">Запланировано</div>' : ''}</td>
+          <td><button class="amount-detail ${row.bonus ? 'positive' : ''}" data-person="${row.p.id}">${row.bonus ? `+${money(row.bonus)}` : '—'}</button></td>
           <td><button class="amount-detail ${row.penalty ? 'negative' : ''}" data-person="${row.p.id}">${row.penalty ? `−${money(row.penalty)}` : '—'}</button></td>
           <td><b>${money(row.total)}</b></td>
           ${periods.map(period => {

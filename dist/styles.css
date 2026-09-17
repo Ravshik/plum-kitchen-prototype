@@ -86,7 +86,7 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 .accounting-model th:first-child,.accounting-model td:first-child{width:34px}
 .accounting-model th:nth-child(2),.accounting-model td:nth-child(2){width:145px;min-width:0}
 .accounting-model th:nth-child(3),.accounting-model td:nth-child(3){left:179px;width:168px;min-width:0}
-.accounting-model th:nth-child(4),.accounting-model td:nth-child(4){width:118px}
+.accounting-model th:nth-child(4),.accounting-model td:nth-child(4){width:168px}
 .accounting-model th:nth-child(5),.accounting-model td:nth-child(5){width:78px}
 .accounting-model th:nth-child(6),.accounting-model td:nth-child(6){width:92px}
 .accounting-model th:nth-child(7),.accounting-model td:nth-child(7){width:94px}
@@ -105,6 +105,24 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 .work-date-list{display:flex;flex-wrap:wrap;gap:3px 5px;color:#283650;font-weight:650;font-variant-numeric:tabular-nums}
 .work-date-list span{display:inline-block;white-space:nowrap}
 .work-dates-cell .subline{margin-top:3px;color:#8a96ad}
+.work-shift-list{display:grid;gap:4px}
+.work-shift-item{width:100%;border:0;border-radius:7px;background:transparent;padding:3px 5px;color:#283650;text-align:left;font-variant-numeric:tabular-nums}
+.work-shift-item:hover{background:#eeedff;color:#514bd5}
+.work-shift-item b,.work-shift-item small{display:block}
+.work-shift-item b{font-size:11px}
+.work-shift-item small{margin-top:1px;color:#7e8aa2;font-size:10px;white-space:nowrap}
+.accounting-model tr.salary-under-norm td{background:#fffbed}
+.accounting-model tr.salary-under-norm td:first-child,.accounting-model tr.salary-under-norm td:nth-child(2),.accounting-model tr.salary-under-norm td:nth-child(3){background:#fff8d9}
+.salary-progress{height:4px;margin-top:6px;overflow:hidden;border-radius:999px;background:#ece8d5}
+.salary-progress span{display:block;width:var(--salary-progress);height:100%;border-radius:inherit;background:#e2ad3a}
+.extended-time-field{grid-column:auto}
+.extended-time-control{display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:8px}
+.extended-time-control>label{display:grid;gap:3px}
+.extended-time-control select{min-width:0;width:100%;min-height:48px;border:1px solid var(--line);border-radius:10px;background:#fff;padding:9px 12px;color:var(--ink);font-size:16px;font-weight:700}
+.extended-time-control>b{padding-top:12px;color:#6d7891;font-size:20px}
+.extended-time-control small{color:#8b96aa;font-size:10px;text-align:center}
+.extended-time-help{color:#6f7b96;font-size:11px;line-height:1.4}
+.extended-time-duration{padding:8px 10px;border-radius:8px;background:#f2f1ff;color:#5650ce;font-size:11px;line-height:1.35}
 .salary-config{padding:14px;border:1px solid #dddafe;border-radius:13px;background:#f8f7ff}
 .salary-config-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
 .salary-config-head b{color:#2f3760;font-size:14px}
@@ -131,9 +149,8 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 .salary-settings-modal .salary-employee-field{grid-column:1;grid-row:1}
 .salary-settings-modal .salary-engagement-field{grid-column:1;grid-row:2}
 .salary-settings-modal .salary-paytype-field{grid-column:1;grid-row:3}
-.salary-settings-modal [data-hourly-rate],.salary-settings-modal [data-regular-salary]{grid-column:2;grid-row:1/5}
-.salary-settings-modal .salary-from-field{grid-column:1;grid-row:4}
-.salary-settings-modal [data-salary-formula]{grid-column:2;grid-row:1/5;min-height:100%;padding:22px}
+.salary-settings-modal [data-hourly-rate],.salary-settings-modal [data-regular-salary]{grid-column:2;grid-row:1/6}
+.salary-settings-modal [data-salary-formula]{grid-column:2;grid-row:1/6;min-height:100%;padding:22px}
 .salary-settings-modal .salary-config-head{margin-bottom:22px}
 .salary-settings-modal .salary-config-head b{max-width:260px;color:#18213d;font-size:21px;line-height:1.25}
 .salary-settings-modal .salary-config-head span{max-width:190px;font-size:12px;line-height:1.45}
@@ -147,6 +164,18 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 .salary-settings-modal .salary-period-note{margin-top:20px;padding-top:17px;border-top:1px solid #dddff0;font-size:13px;line-height:1.55}
 .salary-settings-modal .modal-actions{padding-top:14px;border-top:1px solid var(--line)}
 .salary-settings-modal .modal-actions .btn{min-height:48px;padding:0 22px;font-size:15px}
+.salary-settings-modal .rate-validity{grid-column:1;grid-row:4/6;display:grid;grid-template-columns:1fr 1fr;gap:11px;padding:14px;border:1px solid #e0e2f1;border-radius:14px;background:#fafbff}
+.rate-validity-head,.rate-validity-note{grid-column:1/-1}
+.rate-validity-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.rate-validity-head b{color:var(--ink);font-size:14px}
+.rate-validity-head span{max-width:165px;color:var(--muted);font-size:11px;line-height:1.35;text-align:right}
+.salary-settings-modal .rate-validity .field{min-width:0}
+.salary-settings-modal .rate-validity .field>input{min-height:44px;padding:10px 38px 10px 11px;font-size:13px}
+.salary-settings-modal .rate-validity .field.disabled{opacity:.46}
+.salary-settings-modal .rate-validity .field.disabled input{background:#f0f2f7}
+.salary-settings-modal .rate-indefinite{grid-column:1/-1;min-height:54px;background:#fff}
+.salary-settings-modal .rate-indefinite small{font-size:11px;line-height:1.35}
+.rate-validity-note{padding-top:2px;color:#727e99;font-size:11px;line-height:1.45}
 .salary-reset-btn{margin-right:auto;border:0;background:transparent;color:#605add;padding:0;font-size:14px;font-weight:650}
 .salary-reset-btn:hover{text-decoration:underline}
 @media(max-width:880px){
@@ -154,7 +183,7 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
   .salary-settings-modal .form-grid{display:flex;flex-direction:column;gap:13px}
   .salary-settings-modal .form-grid>*{width:100%}
   .salary-settings-modal [data-salary-formula]{order:4;min-height:0}
-  .salary-settings-modal .salary-from-field{order:5}
+  .salary-settings-modal .rate-validity{order:5}
   .salary-settings-modal .salary-config-head b{font-size:18px}
 }
 @media(max-width:620px){
@@ -162,6 +191,10 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
   .salary-settings-modal .modal-head h2{font-size:24px}
   .salary-settings-modal [data-salary-formula]{padding:16px}
   .salary-settings-modal .salary-config-grid{grid-template-columns:1fr}
+  .salary-settings-modal .rate-validity{grid-template-columns:1fr}
+  .salary-settings-modal .rate-validity>*{grid-column:1}
+  .rate-validity-head{display:block}
+  .rate-validity-head span{display:block;max-width:none;margin-top:3px;text-align:left}
   .salary-settings-modal .modal-actions{flex-wrap:wrap}
   .salary-settings-modal .salary-reset-btn{width:100%;margin-right:0;text-align:left}
 }
@@ -177,7 +210,7 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
   .accounting-model th,.accounting-model td{padding:7px 4px}
   .accounting-model th:nth-child(2),.accounting-model td:nth-child(2){width:126px}
   .accounting-model th:nth-child(3),.accounting-model td:nth-child(3){position:static;width:145px;box-shadow:none}
-  .accounting-model th:nth-child(4),.accounting-model td:nth-child(4){width:104px}
+  .accounting-model th:nth-child(4),.accounting-model td:nth-child(4){width:150px}
   .accounting-model th:nth-child(5),.accounting-model td:nth-child(5){width:67px}
   .accounting-model th:nth-child(6),.accounting-model td:nth-child(6){width:80px}
   .accounting-model th:nth-child(7),.accounting-model td:nth-child(7){width:82px}
@@ -249,7 +282,54 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 .person-duplicate-warning b{font-size:14px}
 .person-duplicate-warning small{margin-top:3px;color:#761d28;font-size:13px;font-weight:700}
 .person-duplicate-warning em{margin-top:3px;color:#a6535d;font-size:12px;font-style:normal}
+.person-duplicate-warning.probable{border-color:#f3d49a;background:#fffaf0;color:#845510}
+.person-duplicate-warning.probable .person-duplicate-icon{background:#e9a529}
+.person-duplicate-warning.probable small{color:#6f4a12}
+.person-duplicate-warning.probable em{color:#9b6f2d}
+.identity-document-field{position:relative}
+.identity-document-field small{display:block;margin-top:6px;color:#9aa4bf;font-size:11px;font-weight:500}
+.identity-document-field input::placeholder{color:#b7bfd1;opacity:.78}
+.identity-country-field small{color:#9aa4bf;font-size:11px;font-weight:500}
+.identity-country-field input{background:#fff}
+.identity-field-head{min-height:17px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.identity-no-middle{display:inline-flex;align-items:center;gap:5px;color:#6d78a0;font-size:11px;white-space:nowrap;cursor:pointer}
+.identity-no-middle input{width:14px!important;height:14px;min-width:14px!important;margin:0;accent-color:var(--violet)}
+.identity-middle-name-field.without-middle-name>input{background:#f4f6fa;color:#8994a8}
+.security-name-locked [data-field="lastName"],.security-name-locked [data-field="firstName"],.security-name-locked [data-field="middleName"]{background:#f1f3f7;color:#737f96;cursor:not-allowed}
+.security-name-locked .identity-no-middle{opacity:.55;cursor:not-allowed}
+.identity-check-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.modal .form-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.modal .form-grid>*{min-width:0;max-width:100%}
+.modal .field input,.modal .field select,.modal .field textarea{width:100%;min-width:0}
+.identity-check-grid .check-field,.identity-check-grid .check-field span{min-width:0}
+.identity-check-grid .check-field b{overflow-wrap:anywhere}
+.identity-check-grid .check-field{min-height:68px;padding:12px 14px}
+.modal:has([data-field="lastName"]){width:min(640px,calc(96vw - 82px));padding:24px}
+.modal:has([data-field="lastName"]) .form-grid{column-gap:14px;row-gap:12px;margin:16px 0}
+.modal:has([data-field="lastName"]) .modal-actions{padding-top:2px}
+.identity-different-person.hidden{display:none}
+.identity-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap}
+.identity-card-history{background:#fbfcff}
+.identity-history-modal{width:min(760px,calc(100vw - 32px));max-height:min(820px,calc(100vh - 40px));overflow:hidden;display:flex;flex-direction:column}
+.identity-history-modal .identity-history-list{overflow:auto;max-height:560px;padding:2px 4px 2px 0}
+.identity-history-list{display:grid;gap:10px}
+.identity-history-row{display:grid;grid-template-columns:12px 1fr;gap:10px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+.identity-history-dot{width:8px;height:8px;margin-top:5px;border-radius:50%;background:#7768f7;box-shadow:0 0 0 4px #eeecff}
+.identity-history-row header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.identity-history-row header b{font-size:14px}.identity-history-row time{color:var(--muted);font-size:12px}
+.identity-history-row strong{display:block;margin-top:4px;font-size:13px;color:#303852}
+.identity-history-row ul{margin:6px 0 0;padding-left:18px;color:#69738d;font-size:12px;line-height:1.5}
+.identity-history-row small{display:block;margin-top:6px;color:#8e98b2}
+.identity-history-empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px;background:#fbfcff}
+.finance-identity-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:0 0 14px}
+.finance-identity-grid>div{padding:13px 14px;border-radius:12px;background:#f6f8fc;border:1px solid #edf0f7}
+.finance-identity-grid span,.finance-identity-grid b{display:block}.finance-identity-grid span{color:var(--muted);font-size:12px}.finance-identity-grid b{margin-top:5px;font-size:13px}
+@media(max-width:760px){.identity-check-grid,.finance-identity-grid{grid-template-columns:1fr}.identity-card-actions{justify-content:flex-start}.identity-history-row header{align-items:flex-start;flex-direction:column;gap:2px}.modal .form-grid{grid-template-columns:1fr}}
+@media(max-width:640px){.modal,.modal:has([data-field="lastName"]){left:50%;width:calc(100vw - 24px);max-height:94vh;padding:18px}.modal-backdrop{inset:0}.modal-actions{position:sticky;bottom:-18px;margin:18px -18px -18px;padding:12px 18px 18px;background:#fff}.modal-actions .btn{min-width:0}.identity-check-grid{grid-template-columns:1fr}}
 .field input.duplicate-input{border-color:#ef4656;background:#fffafb;box-shadow:0 0 0 3px rgba(239,70,86,.12)}
+.chef-payment-total{padding:13px 14px;border:1px solid #dcd9ff;border-radius:12px;background:#f7f6ff}
+.chef-payment-total>input{border:0!important;background:transparent!important;padding:0!important;color:#39339f;font-size:22px;font-weight:800}
+.chef-payment-total small{margin-top:2px;color:#777f9d;font-size:12px}
 
 /* Financial-first employee card */
 .person-finance-drawer{width:min(1040px,calc(100vw - 96px));padding:0 30px;background:#fff}
@@ -288,3 +368,29 @@ button,input,select,textarea{font:inherit;color:inherit} button{cursor:pointer}
 @media(max-width:1050px){.person-finance-drawer,.finance-card-actions{width:min(900px,calc(100vw - 82px))}.finance-summary{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:760px){.drawer-backdrop:not(.hidden){inset:0;z-index:49}.person-finance-drawer{left:0;right:0;width:100vw;padding:0 18px;overflow-x:hidden;z-index:50}.finance-card-actions{width:100vw;padding:12px 18px;grid-template-columns:1fr 1fr;z-index:51}.finance-card-actions .btn.primary{grid-column:1/-1;grid-row:1}.finance-card-head h2{font-size:24px}.finance-summary{grid-template-columns:repeat(2,1fr)}.finance-tabs{gap:18px;overflow:auto}.finance-accrual-head{display:none}.finance-accrual-row{grid-template-columns:1fr auto}.finance-accrual-row>span:nth-child(2),.finance-accrual-row>span:nth-child(3){grid-column:1}.finance-accrual-row>strong{grid-column:2;grid-row:1}.finance-support-grid{grid-template-columns:1fr}.finance-section-head{align-items:flex-start;flex-direction:column}.finance-shift-list>button{grid-template-columns:1fr auto}.finance-shift-list>button>span:first-child{grid-column:1/-1}.finance-shift-list>button>i{grid-column:2;grid-row:2/4}.finance-conditions-grid{grid-template-columns:1fr}}
 .accounting-control{display:flex;align-items:center;gap:10px;margin:10px 0 14px;padding:10px 14px;border:1px solid #d9e5df;border-radius:12px;background:#f5fbf8;color:#176b4a}.accounting-control>span{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#dff5e9;font-weight:800}.accounting-control div{display:flex;flex-direction:column;gap:2px}.accounting-control b{font-size:13px}.accounting-control small{font-size:11px;color:#658174}.accounting-control.has-errors{border-color:#ffc9ce;background:#fff6f7;color:#c92d3d}.accounting-control.has-errors>span{background:#ffe2e5}.accounting-control.has-errors small{color:#a95b64}
+.shift-datetime-modal{width:min(720px,calc(100vw - 32px))}
+.shift-datetime-modal .form-grid{align-items:start}
+.shift-datetime-summary{display:flex;align-items:center;gap:13px;border:1px solid #dddff2;border-radius:13px;background:#f8f8ff;padding:14px 16px}
+.shift-datetime-summary span:last-child{display:grid;gap:3px}
+.shift-datetime-summary small{color:#7d88a0;font-size:12px}
+.shift-datetime-summary b{color:var(--ink);font-size:17px;font-variant-numeric:tabular-nums}
+.shift-datetime-icon{width:40px;height:40px;border-radius:11px;background:#eceaff;color:#5e59dd;display:grid;place-items:center;flex:0 0 auto}
+.shift-datetime-icon svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.shift-datetime-group{border:1px solid #dfe3ee;border-radius:14px;background:#fff;padding:14px 15px 15px}
+.shift-datetime-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px}
+.shift-datetime-title b{color:var(--ink);font-size:16px}
+.shift-datetime-title span{color:#8994aa;font-size:12px}
+.shift-datetime-inputs{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(150px,.65fr);gap:12px}
+.shift-datetime-inputs .field{font-size:13px}
+.shift-datetime-inputs input{min-height:46px;font-size:16px;font-weight:650;font-variant-numeric:tabular-nums}
+.shift-day-presets{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:-2px}
+.shift-day-presets>span{margin-right:2px;color:#7c879e;font-size:12px}
+.shift-day-presets .btn{min-height:34px;border-radius:9px;padding:6px 11px}
+.shift-duration-card{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #dcdafc;border-radius:12px;background:#f4f3ff;padding:13px 15px;color:#403bb7}
+.shift-duration-card span{font-size:13px}
+.shift-duration-card b{font-size:18px;font-variant-numeric:tabular-nums}
+.shift-duration-card.invalid{border-color:#ffd0d4;background:#fff5f6;color:#bf2936}
+.shift-duration-card.invalid b{font-size:13px}
+.shift-duration-warning{border-radius:10px;background:#fff7dd;padding:10px 13px;color:#9a6810;font-size:12px;line-height:1.45}
+.shift-correction-modal .shift-datetime-group,.shift-correction-modal .shift-datetime-group.full{grid-column:span 1}
+@media(max-width:640px){.shift-datetime-modal{width:min(94vw,720px)}.shift-datetime-inputs{grid-template-columns:1fr}.shift-correction-modal .shift-datetime-group,.shift-correction-modal .shift-datetime-group.full{grid-column:1/-1}.shift-duration-card{align-items:flex-start;flex-direction:column;gap:4px}}
