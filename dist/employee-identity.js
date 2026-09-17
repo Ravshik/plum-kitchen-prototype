@@ -69,6 +69,36 @@
     return raw;
   }
 
+  function phoneDigits(value) {
+    let digits = String(value || '').replace(/\D/g, '');
+    if (digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+    if (digits && !digits.startsWith('7')) digits = `7${digits}`;
+    return digits.slice(0, 11);
+  }
+
+  function formatRussianPhone(value, keepPrefix = true) {
+    const digits = phoneDigits(value);
+    const local = digits.startsWith('7') ? digits.slice(1) : digits;
+    if (!local && !keepPrefix) return '';
+    let result = '+7 (';
+    result += local.slice(0, 3);
+    if (local.length >= 3) result += ') ';
+    result += local.slice(3, 6);
+    if (local.length > 6) result += `-${local.slice(6, 8)}`;
+    if (local.length > 8) result += `-${local.slice(8, 10)}`;
+    return result;
+  }
+
+  function validBirthDate(value) {
+    const match = String(value || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) return false;
+    const date = new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]), 12);
+    return date.getFullYear() === Number(match[3]) &&
+      date.getMonth() === Number(match[2]) - 1 &&
+      date.getDate() === Number(match[1]) &&
+      Number(match[3]) >= 1900 && date <= new Date();
+  }
+
   function ensureIdentityState() {
     state.personIdentityHistory = state.personIdentityHistory || [];
     state.people.forEach(personRecord => {
@@ -120,8 +150,8 @@
     const nameParts = splitIdentityName(values);
     return field('Фамилия', 'lastName', nameParts.lastName) +
       field('Имя', 'firstName', nameParts.firstName) +
-      `<div class="field identity-middle-name-field"><div class="identity-field-head"><label for="identity-middle-name">Отчество</label><label class="identity-no-middle"><input data-field="noMiddleName" data-no-middle-name type="checkbox" ${nameParts.noMiddleName ? 'checked' : ''}><span>Нет отчества</span></label></div><input id="identity-middle-name" data-field="middleName" value="${escapeIdentity(nameParts.middleName)}" autocomplete="off" ${nameParts.noMiddleName ? 'disabled placeholder="Отчество отсутствует"' : 'placeholder="Необязательно"'}></div>` +
-      field('Телефон', 'phone', values.phone || '') +
+      `<div class="field identity-middle-name-field"><div class="identity-field-head"><label for="identity-middle-name">Отчество</label><label class="identity-no-middle"><input data-field="noMiddleName" data-no-middle-name type="checkbox" ${nameParts.noMiddleName ? 'checked' : ''}><span>Нет отчества</span></label></div><input id="identity-middle-name" data-field="middleName" value="${escapeIdentity(nameParts.middleName)}" autocomplete="off" ${nameParts.noMiddleName ? 'disabled placeholder="Отчество отсутствует"' : 'placeholder="Введите отчество"'}><small class="identity-required-hint" data-middle-name-hint>Введите отчество или отметьте «Нет отчества»</small></div>` +
+      `<label class="field identity-phone-field">Телефон<input data-field="phone" data-identity-phone value="${escapeIdentity(formatRussianPhone(values.phone || '', true))}" inputmode="tel" autocomplete="tel" placeholder="+7 (___) ___-__-__" maxlength="18"><small>Формат: +7 (999) 999-99-99</small></label>` +
       field('Дата рождения', 'birthDate', values.birthDate || '', 'date') +
       `<label class="field identity-country-field">Гражданство<input data-field="citizenship" data-identity-country value="${escapeIdentity(country)}" list="identity-country-options" placeholder="Начните вводить страну" autocomplete="off"><datalist id="identity-country-options">${countryOptions(country)}</datalist></label>` +
       `<label class="field full identity-document-field">Серия и номер документа<input data-field="passport" data-identity-document value="${escapeIdentity(values.passport || '')}" placeholder="${escapeIdentity(documentExample(country))}" autocomplete="off"></label>` +
@@ -136,6 +166,8 @@
     const documentInput = modal.querySelector('[data-identity-document]');
     const middleNameInput = modal.querySelector('[data-field="middleName"]');
     const noMiddleNameInput = modal.querySelector('[data-no-middle-name]');
+    const phoneInput = modal.querySelector('[data-identity-phone]');
+    const confirmButton = modal.querySelector('[data-confirm-modal]');
     const example = modal.querySelector('[data-document-example]');
     const warning = modal.querySelector('[data-person-duplicate-warning]');
     const differentPerson = modal.querySelector('[data-different-person]');
@@ -156,6 +188,12 @@
       if (example) example.textContent = `Пример для страны: ${sample}`;
     };
     const check = () => {
+      const middleNameReady = !!noMiddleNameInput?.checked || !!middleNameInput?.value.trim();
+      modal.querySelector('.identity-middle-name-field')?.classList.toggle('identity-required-missing', !middleNameReady);
+      if (confirmButton) {
+        confirmButton.disabled = !middleNameReady;
+        confirmButton.title = middleNameReady ? '' : 'Введите отчество или отметьте «Нет отчества»';
+      }
       const current = matchingValues();
       const exact = exactDocumentDuplicate(current.citizenship, current.passport, excludeId);
       const probable = exact ? null : probableDuplicate(current, excludeId);
@@ -184,12 +222,19 @@
       if (hasNoMiddleName && middleNameInput) middleNameInput.value = '';
       if (middleNameInput) {
         middleNameInput.disabled = hasNoMiddleName;
-        middleNameInput.placeholder = hasNoMiddleName ? 'Отчество отсутствует' : 'Необязательно';
+        middleNameInput.placeholder = hasNoMiddleName ? 'Отчество отсутствует' : 'Введите отчество';
       }
       modal.querySelector('.identity-middle-name-field')?.classList.toggle('without-middle-name', hasNoMiddleName);
       check();
     };
     noMiddleNameInput?.addEventListener('change', syncMiddleName);
+    const syncPhone = () => {
+      phoneInput.value = formatRussianPhone(phoneInput.value, true);
+      phoneInput.setSelectionRange(phoneInput.value.length, phoneInput.value.length);
+      check();
+    };
+    phoneInput?.addEventListener('input', syncPhone);
+    phoneInput?.addEventListener('focus', syncPhone);
     tracked.forEach(name => modal.querySelector(`[data-field="${name}"]`)?.addEventListener('input', check));
     syncMiddleName();
     refreshExample();
@@ -204,9 +249,13 @@
     values.firstName = values.firstName.trim();
     values.noMiddleName = !!values.noMiddleName;
     values.middleName = values.noMiddleName ? '' : String(values.middleName || '').trim();
+    if (!values.noMiddleName && !values.middleName) { toast('Введите отчество или отметьте «Нет отчества»'); return false; }
     values.name = composeIdentityName(values);
-    if (normalizedPhone(values.phone).length < 10) { toast('Проверьте номер телефона'); return false; }
-    if (!values.birthDate) { toast('Укажите дату рождения'); return false; }
+    values.phone = formatRussianPhone(values.phone, true);
+    const digits = phoneDigits(values.phone);
+    if (digits.length !== 11 || !digits.startsWith('7')) { toast('Введите телефон полностью: +7 (999) 999-99-99'); return false; }
+    values.birthDate = normalizeBirthDate(values.birthDate);
+    if (!validBirthDate(values.birthDate)) { toast('Введите корректную дату рождения в формате ДД.ММ.ГГГГ'); return false; }
     const resolvedCountry = canonicalCountry(values.citizenship);
     if (!resolvedCountry) { toast('Выберите страну из подсказок'); return false; }
     values.citizenship = resolvedCountry;

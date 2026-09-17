@@ -83,6 +83,17 @@
     return toIso(parsed) === candidate ? candidate : '';
   }
 
+  function maskDateValue(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+    if (!digits) return '';
+    let result = digits.slice(0, 2);
+    if (digits.length >= 2) result += '.';
+    if (digits.length > 2) result += digits.slice(2, 4);
+    if (digits.length >= 4) result += '.';
+    if (digits.length > 4) result += digits.slice(4, 8);
+    return result;
+  }
+
   let datePopover = null;
 
   function closeDatePopover() {
@@ -388,6 +399,13 @@
       return;
     }
     if (datePopover && !datePopover.contains(event.target)) closeDatePopover();
+  });
+
+  document.addEventListener('input', event => {
+    const input = event.target.closest?.('[data-plum-date]');
+    if (!input || input.readOnly || input.disabled) return;
+    const masked = maskDateValue(input.value);
+    if (input.value !== masked) input.value = masked;
   });
 
   document.addEventListener('keydown', event => {
