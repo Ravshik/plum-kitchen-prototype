@@ -289,7 +289,10 @@
         scudRegistered: values.scudRegistered,
         source: 'security',
         securityVisible: true,
-        registeredAtLocation: currentSecurityLocation
+        registeredAtLocation: currentSecurityLocation,
+        registeredAt: today(),
+        needsAccountingReview: true,
+        onboardingStep: 'rate'
       };
       state.people.push(personRecord);
       addIdentityHistory(personRecord, 'Карточка сотрудника создана', [

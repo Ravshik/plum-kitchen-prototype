@@ -225,7 +225,7 @@
     return state.shifts.filter(shift => {
       const sameMonth = ruToIso(shift.date).startsWith(`${monthKey}-`);
       const sameLocation = locationFilter === 'Все площадки' || shift.location === locationFilter;
-      return shift.personId === personId && sameMonth && sameLocation;
+      return shift.personId === personId && shift.type !== 'Вызывной' && sameMonth && sameLocation;
     });
   }
 
@@ -235,6 +235,7 @@
     if (!isSalaryEmployee(personRecord)) return row;
 
     const salaryShifts = monthShifts(personRecord.id, locationFilter);
+    const currentSalaryShifts = row.shifts.filter(shift => shift.type !== 'Вызывной');
     const salaryErrors = salaryShifts.filter(hasError);
     const monthHours = salaryShifts.reduce((sum, shift) => sum + (hours(shift) || 0), 0);
     const salaryBase = Number(personRecord.payType === FORMULA_PAY_TYPE ? personRecord.salaryBase || personRecord.monthlySalary || personRecord.rate || 0 : personRecord.monthlySalary || personRecord.rate || 0);
@@ -244,14 +245,31 @@
     const proportionalHours = Math.min(monthHours, normHours);
     const proportionalBase = normHours > 0 ? salaryBase / normHours * proportionalHours : 0;
     const base = Math.round(proportionalBase + (personRecord.payType === FORMULA_PAY_TYPE ? overtimeHours * overtimeRate : 0));
-    const payable = isClosingPeriod();
-    const total = base + row.taxi + row.bonus - row.penalty;
+    // Salary accrues cumulatively for the month, but a payout may only be
+    // formed from a calculation period that actually contains this person's
+    // shifts. This keeps the cumulative salary formula while preventing an
+    // employee from appearing in a later, empty week just because it is the
+    // closing period of the month.
+    const hasCurrentPeriodShifts = currentSalaryShifts.length > 0;
+    const payable = hasCurrentPeriodShifts;
+    const monthKey = currentAccountingMonthKey();
+    const salaryPenalty = state.adjustments.filter(adjustment => {
+      const samePerson = adjustment.personId === personRecord.id;
+      const sameType = adjustment.type === 'Штраф';
+      const sameMonth = adjustment.date
+        ? monthKeyFromRuDate(adjustment.date) === monthKey
+        : adjustment.month === periodMonth();
+      const sameLocation = locationFilter === 'Все площадки' || adjustment.location === locationFilter;
+      return samePerson && sameType && sameMonth && sameLocation;
+    }).reduce((sum, adjustment) => sum + Number(adjustment.amount || 0), 0);
+    const total = base + row.taxi + row.bonus - salaryPenalty;
 
     return {
       ...row,
-      ok: salaryShifts.length > 0 && salaryErrors.length === 0,
+      ok: hasCurrentPeriodShifts && salaryErrors.length === 0,
       errorShifts: salaryErrors,
       base,
+      penalty: salaryPenalty,
       total,
       balance: total - row.paid,
       salaryBase,
@@ -262,7 +280,7 @@
       salaryHourlyValue: normHours > 0 ? salaryBase / normHours : 0,
       salaryUnderNorm: monthHours < normHours,
       salaryMissingHours: Math.max(0, normHours - monthHours),
-      salaryIncluded: true,
+      salaryIncluded: hasCurrentPeriodShifts,
       salaryPayable: payable
     };
   };
@@ -290,8 +308,8 @@
 
   const rowStatusBeforeSalaryFormula = rowStatus;
   rowStatus = function (row) {
+    if (isSalaryEmployee(row.p) && !row.salaryPayable) return status('Нет смен в выбранном периоде', 'warn');
     if (isSalaryEmployee(row.p) && row.salaryUnderNorm) return status(`Начислено ${row.salaryMonthHours.toLocaleString('ru-RU')} из ${row.salaryNormHours} ч`, 'warn');
-    if (isSalaryEmployee(row.p) && !row.salaryPayable) return status('Накоплено · выплата в конце месяца', 'warn');
     return rowStatusBeforeSalaryFormula(row);
   };
 
@@ -332,7 +350,7 @@
     modal.classList.toggle('salary-wide-layout', [SALARY_PAY_TYPE, FORMULA_PAY_TYPE].includes(activeType));
   }
 
-  function openSalarySettings(personRecord) {
+  function openSalarySettings(personRecord, onSaved = null) {
     const chefRate = personRecord.type === 'Вызывной' && employment(personRecord) === 'Наличные';
     const currentPayType = [FORMULA_PAY_TYPE, SALARY_PAY_TYPE, 'Почасовая'].includes(personRecord.payType)
       ? personRecord.payType
@@ -356,7 +374,7 @@
       selectField('Тип оплаты', 'payType', options(['Почасовая', SALARY_PAY_TYPE, FORMULA_PAY_TYPE], currentPayType)) +
       `<label class="field ${currentPayType === 'Почасовая' ? '' : 'hidden'}" data-hourly-rate>Ставка за час<div class="salary-input"><input data-field="rate" type="number" min="0" step="1" value="${personRecord.rate || ''}"><span>₽/ч</span></div></label>` +
       `<section class="salary-config full ${currentPayType === SALARY_PAY_TYPE ? '' : 'hidden'}" data-regular-salary>
-        <div class="salary-config-head"><b>Ежемесячный оклад</b><span>Растёт по закрытым сменам, выплачивается в конце месяца</span></div>
+        <div class="salary-config-head"><b>Ежемесячный оклад</b><span>Растёт по закрытым сменам и выплачивается в периоде работы</span></div>
         <div class="salary-config-grid">
           ${salaryField('Оклад за месяц', 'monthlySalary', monthlySalary || 123000, '₽')}
           ${salaryField('Норма часов', 'monthlyNormHours', normHours, 'ч')}
@@ -371,7 +389,7 @@
           ${salaryField('Переработка', 'salaryOvertimeRate', overtimeRate, '₽/ч')}
         </div>
         <div class="salary-formula-preview">До <b data-formula-norm>${normHours}</b> ч: <b data-formula-base>${money(salaryBase)}</b> ÷ <b data-formula-norm>${normHours}</b> × фактические часы. Сверх нормы: полный оклад + переработка × <b data-formula-overtime>${money(overtimeRate)}</b>.</div>
-        <div class="salary-period-note">Начисление растёт после каждой закрытой смены. Выплата оклада доступна в периоде, включающем последнюю неделю месяца.</div>
+        <div class="salary-period-note">Начисление растёт после каждой закрытой смены. Ведомость формируется только за выбранный период, в котором у сотрудника есть смена; выплаты месяца автоматически вычитаются из остатка.</div>
       </section>` +
       (chefRate ? '<div class="field full rate-hint">Для наличного вызывного ставку устанавливает шеф отдельно в каждой закрытой смене.</div>' : '') +
       validityBlock,
@@ -432,6 +450,7 @@
           actor: 'Бухгалтер',
           text: `Для ${personRecord.name} назначены условия: ${personRecord.position} · ${data.engagement} · ${selectedType} · ${conditions} · период ${validity}`
         });
+        if (typeof onSaved === 'function') onSaved({ assignment, data, personRecord });
       }
     );
 
@@ -485,6 +504,8 @@
     updateSalaryFields(modal);
     updateValidity();
   }
+
+  window.openSalarySettings = openSalarySettings;
 
   const openModalBeforeSalaryLayout = openModal;
   openModal = function (...args) {

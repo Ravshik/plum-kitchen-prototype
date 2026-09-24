@@ -75,7 +75,7 @@
           <th>Статус</th>
         </tr></thead>
         <tbody>${rows.map(row => `<tr class="${row.salaryUnderNorm ? 'salary-under-norm' : ''}" data-ledger-row data-person-name="${row.p.name.toLowerCase()}">
-          <td><input type="checkbox" data-pay-person="${row.p.id}" ${row.balance <= 0 || row.salaryPayable === false ? 'disabled' : ''}></td>
+          <td><input type="checkbox" data-pay-person="${row.p.id}" ${row.balance <= 0 || !row.ok || row.salaryPayable === false ? 'disabled' : ''}></td>
           <td><b>${row.p.position}</b><div class="subline">${employment(row.p)} · ${row.p.type}</div></td>
           <td><button class="person-link" data-person="${row.p.id}">${row.p.name}</button>${row.p.source === 'accounting' ? '<div class="subline">Без табеля охраны</div>' : ''}</td>
           <td class="work-dates-cell">${workDatesCell(row.shifts)}</td>

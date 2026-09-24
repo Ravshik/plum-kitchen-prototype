@@ -208,10 +208,11 @@
   function openPeriodCalendar() {
     const modal = document.querySelector('#modal');
     const backdrop = document.querySelector('#modal-backdrop');
-    let rangeStart = currentPeriodFrom || '';
-    let rangeEnd = currentPeriodTo || '';
-    const initial = rangeStart ? parseIso(rangeStart) : new Date();
-    let visible = new Date(initial.getFullYear(), initial.getMonth(), 1, 12, 0, 0, 0);
+    const actualDate = new Date();
+    const actualWeekStart = weekStart(actualDate);
+    let rangeStart = toIso(actualWeekStart);
+    let rangeEnd = toIso(addDays(actualWeekStart, 6));
+    let visible = new Date(actualDate.getFullYear(), actualDate.getMonth(), 1, 12, 0, 0, 0);
 
     modal.classList.add('period-calendar-modal');
     backdrop.classList.remove('hidden');

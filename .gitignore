@@ -1,0 +1,7 @@
+/tmp/
+/outputs/
+/accounting-prototype/
+*.log
+.DS_Store
+Thumbs.db
+
